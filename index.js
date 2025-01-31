@@ -1,14 +1,19 @@
 require("dotenv").config();
 const express = require("express");
 const axios = require("axios");
-const OpenAI = require("openai");
+const dialogflow = require("@google-cloud/dialogflow");
+const fs = require("fs");
+const path = require("path");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const CREDENTIALS_PATH = path.join(__dirname, "dialogflow-credentials.json");
+const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH));
+
+const sessionClient = new dialogflow.SessionsClient({ credentials });
 
 app.get("/whatsapp/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
@@ -34,7 +39,7 @@ app.post("/whatsapp/webhook", async (req, res) => {
     const text = message.text?.body;
 
     if (text) {
-      const aiResponse = await generateAIResponse(text);
+      const aiResponse = await generateDialogflowResponse(text, sender);
       await sendWhatsAppMessage(sender, aiResponse);
     }
   } catch (error) {
@@ -44,16 +49,27 @@ app.post("/whatsapp/webhook", async (req, res) => {
   res.sendStatus(200);
 });
 
-async function generateAIResponse(userInput) {
+async function generateDialogflowResponse(userInput, sessionId) {
   try {
-    const response = await openai.chat.completions.create({
-      messages: [{ role: "user", content: userInput }],
-      model: process.env.OPENAI_MODEL || "gpt-4o-2024-05-13",
-    });
+    const sessionPath = sessionClient.projectAgentSessionPath(
+      credentials.project_id,
+      sessionId
+    );
 
-    return response.choices[0].message.content;
+    const request = {
+      session: sessionPath,
+      queryInput: {
+        text: {
+          text: userInput,
+          languageCode: "en",
+        },
+      },
+    };
+
+    const responses = await sessionClient.detectIntent(request);
+    return responses[0]?.queryResult?.fulfillmentText || "I didn't understand that.";
   } catch (error) {
-    console.error("OpenAI Error:", error.message);
+    console.error("Dialogflow Error:", error.message);
     return "Sorry, I am unable to respond at the moment.";
   }
 }
