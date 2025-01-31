@@ -48,7 +48,7 @@ async function generateAIResponse(userInput) {
   try {
     const response = await openai.chat.completions.create({
       messages: [{ role: "user", content: userInput }],
-      model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+      model: process.env.OPENAI_MODEL || "gpt-4o-2024-05-13",
     });
 
     return response.choices[0].message.content;
